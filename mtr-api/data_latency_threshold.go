@@ -32,7 +32,12 @@ func (f *dataLatencyThreshold) save(r *http.Request) *weft.Result {
 
 	var dm dataLatency
 
-	if res := dm.loadPK(r); !res.Ok {
+	v := r.URL.Query()
+
+	dm.dataSite.id = v.Get("siteID")
+	dm.dataType.id = v.Get("typeID")
+
+	if res := dm.read(); !res.Ok {
 		return res
 	}
 
@@ -68,7 +73,12 @@ func (f *dataLatencyThreshold) delete(r *http.Request) *weft.Result {
 
 	var dm dataLatency
 
-	if res := dm.loadPK(r); !res.Ok {
+	v := r.URL.Query()
+
+	dm.dataSite.id = v.Get("siteID")
+	dm.dataType.id = v.Get("typeID")
+
+	if res := dm.read(); !res.Ok {
 		return res
 	}
 

@@ -17,7 +17,9 @@ type fieldMetricTag struct {
 }
 
 func (f *fieldMetricTag) loadPK(r *http.Request) *weft.Result {
-	if res := f.tag.loadPK(r); !res.Ok {
+	f.tag.id = r.URL.Query().Get("tag")
+
+	if res := f.tag.read(); !res.Ok {
 		return res
 	}
 
@@ -43,7 +45,7 @@ func (f *fieldMetricTag) save(r *http.Request, h http.Header, b *bytes.Buffer) *
 
 	if _, err := db.Exec(`INSERT INTO field.metric_tag(devicePK, typePK, tagPK)
 			VALUES($1, $2, $3)`,
-		f.devicePK, f.typePK, f.tagPK); err != nil {
+		f.devicePK, f.typePK, f.tag.pk); err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
 			// ignore unique constraint errors
 		} else {
@@ -66,7 +68,7 @@ func (f *fieldMetricTag) delete(r *http.Request, h http.Header, b *bytes.Buffer)
 	if _, err := db.Exec(`DELETE FROM field.metric_tag
 			WHERE devicePK = $1
 			AND typePK = $2
-			AND tagPK = $3`, f.devicePK, f.typePK, f.tagPK); err != nil {
+			AND tagPK = $3`, f.devicePK, f.typePK, f.tag.pk); err != nil {
 		return weft.InternalServerError(err)
 	}
 

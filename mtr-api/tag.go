@@ -10,12 +10,28 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"fmt"
 )
 
 type tag struct {
-	tagPK     int
-	pk        *weft.Result
+	pk int
+	id string
 	tagResult mtrpb.TagSearchResult
+}
+
+func (a *tag) read() *weft.Result {
+	if a.id == "" {
+		return weft.InternalServerError(fmt.Errorf("empty tag.id"))
+	}
+
+	if err := dbR.QueryRow(`SELECT tagPK FROM mtr.tag where tag = $1`, a.id).Scan(&a.pk); err != nil {
+		if err == sql.ErrNoRows {
+			return weft.BadRequest("tag not found")
+		}
+		return weft.InternalServerError(err)
+	}
+
+	return &weft.StatusOK
 }
 
 func (t *tag) save(r *http.Request) *weft.Result {
@@ -46,32 +62,6 @@ func (t *tag) delete(r *http.Request) *weft.Result {
 	}
 
 	return &weft.StatusOK
-}
-
-func (t *tag) loadPK(r *http.Request) *weft.Result {
-	if t.pk == nil {
-		tg := r.URL.Query().Get("tag")
-
-		if tg == "" {
-			tg = strings.TrimPrefix(r.URL.Path, "/tag/")
-			if tg == "" {
-				t.pk = weft.BadRequest("no tag")
-				return t.pk
-			}
-		}
-
-		if err := dbR.QueryRow(`SELECT tagPK FROM mtr.tag where tag = $1`, tg).Scan(&t.tagPK); err != nil {
-			if err == sql.ErrNoRows {
-				t.pk = weft.BadRequest("unknown tag")
-				return t.pk
-			}
-			t.pk = weft.InternalServerError(err)
-			return t.pk
-		}
-		t.pk = &weft.StatusOK
-	}
-
-	return t.pk
 }
 
 func (t *tag) all(r *http.Request, h http.Header, b *bytes.Buffer) *weft.Result {
@@ -116,7 +106,12 @@ func (t *tag) single(r *http.Request, h http.Header, b *bytes.Buffer) *weft.Resu
 		return res
 	}
 
-	if res := t.loadPK(r); !res.Ok {
+	t.id = strings.TrimPrefix(r.URL.Path, "/tag/")
+	if t.id == "" {
+		return weft.BadRequest("no tag")
+	}
+
+	if res := t.read(); !res.Ok {
 		return res
 	}
 
@@ -160,7 +155,7 @@ func (t *tag) fieldMetric() <-chan *weft.Result {
 		if rows, err = dbR.Query(`SELECT deviceID, modelID, typeid, time, value, lower, upper
 	 			  FROM field.metric_tag JOIN field.metric_summary USING (devicepk, typepk)
 			          WHERE tagPK = $1
-				`, t.tagPK); err != nil {
+				`, t.pk); err != nil {
 			out <- weft.InternalServerError(err)
 			return
 		}
@@ -199,7 +194,7 @@ func (t *tag) dataLatency() <-chan *weft.Result {
 		if rows, err = dbR.Query(`SELECT siteID, typeID, time, mean, fifty, ninety, lower, upper
 	 			  FROM data.latency_tag JOIN data.latency_summary USING (sitePK, typePK)
 			          WHERE tagPK = $1
-				`, t.tagPK); err != nil {
+				`, t.pk); err != nil {
 			out <- weft.InternalServerError(err)
 			return
 		}

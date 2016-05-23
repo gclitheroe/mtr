@@ -101,18 +101,6 @@ func (a *dataSite) delete(r *http.Request) *weft.Result {
 	return a.del()
 }
 
-func (a *dataSite) loadPK(r *http.Request) *weft.Result {
-	if err := dbR.QueryRow(`SELECT sitePK FROM data.site where siteID = $1`,
-		r.URL.Query().Get("siteID")).Scan(&a.pk); err != nil {
-		if err == sql.ErrNoRows {
-			return weft.BadRequest("unknown siteID")
-		}
-		return weft.InternalServerError(err)
-	}
-
-	return &weft.StatusOK
-}
-
 func (a *dataSite) proto(r *http.Request, h http.Header, b *bytes.Buffer) *weft.Result {
 	if res := weft.CheckQuery(r, []string{}, []string{}); !res.Ok {
 		return res

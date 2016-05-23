@@ -21,28 +21,34 @@ type dataLatency struct {
 	mean, min, max, fifty, ninety int
 }
 
-//func (a *dataLatency) read() {
-//	//if res := a.dataType.
-//}
-
-// TODO adopt this no-op approach further?
-// Also pass the http.Resquest every where?
-func (d *dataLatency) loadPK(r *http.Request) *weft.Result {
-	if d.pk == nil {
-		d.dataType.id = r.URL.Query().Get("typeID")
-
-		if res := d.dataType.read(); !res.Ok {
-			return res
-		}
-
-		if d.pk = d.dataSite.loadPK(r); !d.pk.Ok {
-			return d.pk
-		}
-
-		d.pk = &weft.StatusOK
+func (a *dataLatency) read() *weft.Result {
+	if res := a.dataType.read(); !res.Ok {
+		return res
 	}
 
-	return d.pk
+	if res := a.dataSite.read(); !res.Ok {
+		return res
+	}
+
+	return &weft.StatusOK
+}
+
+func (a *dataLatency) create() *weft.Result {
+	if res := a.read(); !res.Ok {
+		return res
+	}
+
+	if _, err := db.Exec(`INSERT INTO data.latency(sitePK, typePK, rate_limit, time, mean, min, max, fifty, ninety) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		a.dataSite.pk, a.dataType.pk, a.t.Truncate(time.Minute).Unix(),
+		a.t, int32(a.mean), int32(a.min), int32(a.max), int32(a.fifty), int32(a.ninety)); err != nil {
+		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
+			return &statusTooManyRequests
+		} else {
+			return weft.InternalServerError(err)
+		}
+	}
+
+	return &weft.StatusOK
 }
 
 /*
@@ -65,55 +71,46 @@ func (d *dataLatency) save(r *http.Request) *weft.Result {
 		return res
 	}
 
+	v := r.URL.Query()
+
 	var err error
 
-	if d.mean, err = strconv.Atoi(r.URL.Query().Get("mean")); err != nil {
+	d.dataType.id = v.Get("typeID")
+	d.dataSite.id = v.Get("siteID")
+
+	if d.mean, err = strconv.Atoi(v.Get("mean")); err != nil {
 		return weft.BadRequest("invalid value for mean")
 	}
 
-	if r.URL.Query().Get("min") != "" {
-		if d.min, err = strconv.Atoi(r.URL.Query().Get("min")); err != nil {
+	if v.Get("min") != "" {
+		if d.min, err = strconv.Atoi(v.Get("min")); err != nil {
 			return weft.BadRequest("invalid value for min")
 		}
 	}
 
-	if r.URL.Query().Get("max") != "" {
-		if d.max, err = strconv.Atoi(r.URL.Query().Get("max")); err != nil {
+	if v.Get("max") != "" {
+		if d.max, err = strconv.Atoi(v.Get("max")); err != nil {
 			return weft.BadRequest("invalid value for max")
 		}
 	}
 
-	if r.URL.Query().Get("fifty") != "" {
-		if d.fifty, err = strconv.Atoi(r.URL.Query().Get("fifty")); err != nil {
+	if v.Get("fifty") != "" {
+		if d.fifty, err = strconv.Atoi(v.Get("fifty")); err != nil {
 			return weft.BadRequest("invalid value for fifty")
 		}
 	}
 
-	if r.URL.Query().Get("ninety") != "" {
-		if d.ninety, err = strconv.Atoi(r.URL.Query().Get("ninety")); err != nil {
+	if v.Get("ninety") != "" {
+		if d.ninety, err = strconv.Atoi(v.Get("ninety")); err != nil {
 			return weft.BadRequest("invalid value for ninety")
 		}
 	}
 
-	if d.t, err = time.Parse(time.RFC3339, r.URL.Query().Get("time")); err != nil {
+	if d.t, err = time.Parse(time.RFC3339, v.Get("time")); err != nil {
 		return weft.BadRequest("invalid time")
 	}
 
-	if res := d.loadPK(r); !res.Ok {
-		return res
-	}
-
-	if _, err = db.Exec(`INSERT INTO data.latency(sitePK, typePK, rate_limit, time, mean, min, max, fifty, ninety) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.dataSite.pk, d.dataType.pk, d.t.Truncate(time.Minute).Unix(),
-		d.t, int32(d.mean), int32(d.min), int32(d.max), int32(d.fifty), int32(d.ninety)); err != nil {
-		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
-			return &statusTooManyRequests
-		} else {
-			return weft.InternalServerError(err)
-		}
-	}
-
-	return &weft.StatusOK
+	return d.create()
 }
 
 func (d *dataLatency) delete(r *http.Request) *weft.Result {
@@ -121,12 +118,16 @@ func (d *dataLatency) delete(r *http.Request) *weft.Result {
 		return res
 	}
 
-	var err error
-	if res := d.loadPK(r); !res.Ok {
+	v := r.URL.Query()
+	d.dataSite.id = v.Get("siteID")
+	d.dataType.id = v.Get("typeID")
+
+	if res := d.read(); !res.Ok {
 		return res
 	}
 
 	var txn *sql.Tx
+	var err error
 
 	if txn, err = db.Begin(); err != nil {
 		return weft.InternalServerError(err)
@@ -162,15 +163,18 @@ func (d *dataLatency) svg(r *http.Request, h http.Header, b *bytes.Buffer) *weft
 		return res
 	}
 
-	if res := d.loadPK(r); !res.Ok {
+	v := r.URL.Query()
+
+	d.dataSite.id = v.Get("siteID")
+	d.dataType.id = v.Get("typeID")
+
+	if res := d.read(); !res.Ok {
 		return res
 	}
 
-	d.dataSite.id = r.URL.Query().Get("siteID")
-
 	switch r.URL.Query().Get("plot") {
 	case "", "line":
-		resolution := r.URL.Query().Get("resolution")
+		resolution := v.Get("resolution")
 		if resolution == "" {
 			resolution = "minute"
 		}
