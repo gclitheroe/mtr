@@ -47,7 +47,7 @@ func (d *dataLatency) threshold() (lower, upper int, res *weft.Result) {
 
 	if err := dbR.QueryRow(`SELECT lower,upper FROM data.latency_threshold
 		WHERE sitePK = $1 AND typePK = $2`,
-		d.sitePK, d.dataType.typePK).Scan(&lower, &upper); err != nil && err != sql.ErrNoRows {
+		d.dataSite.pk, d.dataType.typePK).Scan(&lower, &upper); err != nil && err != sql.ErrNoRows {
 		res = weft.InternalServerError(err)
 	}
 
@@ -98,7 +98,7 @@ func (d *dataLatency) save(r *http.Request) *weft.Result {
 	}
 
 	if _, err = db.Exec(`INSERT INTO data.latency(sitePK, typePK, rate_limit, time, mean, min, max, fifty, ninety) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.sitePK, d.dataType.typePK, d.t.Truncate(time.Minute).Unix(),
+		d.dataSite.pk, d.dataType.typePK, d.t.Truncate(time.Minute).Unix(),
 		d.t, int32(d.mean), int32(d.min), int32(d.max), int32(d.fifty), int32(d.ninety)); err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
 			return &statusTooManyRequests
@@ -127,19 +127,19 @@ func (d *dataLatency) delete(r *http.Request) *weft.Result {
 	}
 
 	if _, err = txn.Exec(`DELETE FROM data.latency WHERE sitePK = $1 AND typePK = $2`,
-		d.sitePK, d.dataType.typePK); err != nil {
+		d.dataSite.pk, d.dataType.typePK); err != nil {
 		txn.Rollback()
 		return weft.InternalServerError(err)
 	}
 
 	if _, err = txn.Exec(`DELETE FROM data.latency_threshold WHERE sitePK = $1 AND typePK = $2`,
-		d.sitePK, d.dataType.typePK); err != nil {
+		d.dataSite.pk, d.dataType.typePK); err != nil {
 		txn.Rollback()
 		return weft.InternalServerError(err)
 	}
 
 	if _, err = txn.Exec(`DELETE FROM data.latency_tag WHERE sitePK = $1 AND typePK = $2`,
-		d.sitePK, d.typePK); err != nil {
+		d.dataSite.pk, d.typePK); err != nil {
 		txn.Rollback()
 		return weft.InternalServerError(err)
 	}
@@ -160,7 +160,7 @@ func (d *dataLatency) svg(r *http.Request, h http.Header, b *bytes.Buffer) *weft
 		return res
 	}
 
-	d.siteID = r.URL.Query().Get("siteID")
+	d.dataSite.id = r.URL.Query().Get("siteID")
 
 	switch r.URL.Query().Get("plot") {
 	case "", "line":
@@ -209,7 +209,7 @@ func (d *dataLatency) plot(resolution string, b *bytes.Buffer) *weft.Result {
 
 	p.SetSubTitle("Tags: " + strings.Join(tags, ","))
 
-	p.SetTitle(fmt.Sprintf("Site: %s - %s", d.siteID, strings.Title(d.dataType.Name)))
+	p.SetTitle(fmt.Sprintf("Site: %s - %s", d.dataSite.id, strings.Title(d.dataType.Name)))
 
 	var err error
 	var rows *sql.Rows
@@ -226,7 +226,7 @@ func (d *dataLatency) plot(resolution string, b *bytes.Buffer) *weft.Result {
 		AND time > now() - interval '12 hours'
 		GROUP BY date_trunc('`+resolution+`',time)
 		ORDER BY t ASC`,
-			d.sitePK, d.dataType.typePK)
+			d.dataSite.pk, d.dataType.typePK)
 	case "five_minutes":
 		p.SetXAxis(time.Now().UTC().Add(time.Hour*-24*2), time.Now().UTC())
 		p.SetXLabel("48 hours")
@@ -237,7 +237,7 @@ func (d *dataLatency) plot(resolution string, b *bytes.Buffer) *weft.Result {
 		AND time > now() - interval '2 days'
 		GROUP BY date_trunc('hour', time) + extract(minute from time)::int / 5 * interval '5 min'
 		ORDER BY t ASC`,
-			d.sitePK, d.dataType.typePK)
+			d.dataSite.pk, d.dataType.typePK)
 	case "hour":
 		p.SetXAxis(time.Now().UTC().Add(time.Hour*-24*28), time.Now().UTC())
 		p.SetXLabel("4 weeks")
@@ -247,7 +247,7 @@ func (d *dataLatency) plot(resolution string, b *bytes.Buffer) *weft.Result {
 		AND time > now() - interval '28 days'
 		GROUP BY date_trunc('`+resolution+`',time)
 		ORDER BY t ASC`,
-			d.sitePK, d.dataType.typePK)
+			d.dataSite.pk, d.dataType.typePK)
 	default:
 		return weft.BadRequest("invalid resolution")
 	}
@@ -276,7 +276,7 @@ func (d *dataLatency) plot(resolution string, b *bytes.Buffer) *weft.Result {
 			sitePK = $1 AND typePK = $2
 			ORDER BY time DESC
 			LIMIT 1`,
-		d.sitePK, d.dataType.typePK).Scan(&t, &value); err != nil {
+		d.dataSite.pk, d.dataType.typePK).Scan(&t, &value); err != nil {
 		return weft.InternalServerError(err)
 	}
 
@@ -309,7 +309,7 @@ func (d *dataLatency) spark(b *bytes.Buffer) *weft.Result {
 		AND time > now() - interval '12 hours'
 		GROUP BY date_trunc('hour', time) + extract(minute from time)::int / 5 * interval '5 min'
 		ORDER BY t ASC`,
-		d.sitePK, d.dataType.typePK); err != nil {
+		d.dataSite.pk, d.dataType.typePK); err != nil {
 		return weft.InternalServerError(err)
 	}
 
@@ -344,7 +344,7 @@ func (f *dataLatency) tags() (t []string, res *weft.Result) {
 	if rows, err = dbR.Query(`SELECT tag FROM data.latency_tag JOIN mtr.tag USING (tagpk) WHERE
 		sitePK = $1 AND typePK = $2
 		ORDER BY tag asc`,
-		f.sitePK, f.typePK); err != nil {
+		f.dataSite.pk, f.typePK); err != nil {
 		res = weft.InternalServerError(err)
 		return
 	}

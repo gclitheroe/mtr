@@ -235,7 +235,7 @@ func dataSiteHandler(r *http.Request, h http.Header, b *bytes.Buffer) *weft.Resu
 			return &weft.NotAcceptable
 		}
 	case "PUT":
-		return d.save(r)
+		return d.put(r)
 	case "DELETE":
 		return d.delete(r)
 	default:
