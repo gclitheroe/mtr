@@ -1,6 +1,7 @@
 package main
 
 import (
+
 	"bytes"
 	"database/sql"
 	"github.com/GeoNet/mtr/mtrpb"
@@ -34,13 +35,12 @@ func (a *tag) read() *weft.Result {
 	return &weft.StatusOK
 }
 
-func (t *tag) save(r *http.Request) *weft.Result {
-	if res := weft.CheckQuery(r, []string{}, []string{}); !res.Ok {
-		return res
+func (a *tag) create() *weft.Result {
+	if a.id == "" {
+		return weft.InternalServerError(fmt.Errorf("empty tag.id"))
 	}
 
-	if _, err := db.Exec(`INSERT INTO mtr.tag(tag) VALUES($1)`,
-		strings.TrimPrefix(r.URL.Path, "/tag/")); err != nil {
+	if _, err := db.Exec(`INSERT INTO mtr.tag(tag) VALUES($1)`, a.id); err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
 			//	no-op.  Nothing to update.
 		} else {
@@ -49,6 +49,16 @@ func (t *tag) save(r *http.Request) *weft.Result {
 	}
 
 	return &weft.StatusOK
+}
+
+func (t *tag) save(r *http.Request) *weft.Result {
+	if res := weft.CheckQuery(r, []string{}, []string{}); !res.Ok {
+		return res
+	}
+
+	t.id = strings.TrimPrefix(r.URL.Path, "/tag/")
+
+	return t.create()
 }
 
 func (t *tag) delete(r *http.Request) *weft.Result {
