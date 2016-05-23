@@ -21,7 +21,9 @@ func (f *dataLatencyTag) loadPK(r *http.Request) *weft.Result {
 		return res
 	}
 
-	if res := f.dataType.load(r); !res.Ok {
+	f.dataType.id = r.URL.Query().Get("typeID")
+
+	if res := f.dataType.read(); !res.Ok {
 		return res
 	}
 
@@ -43,7 +45,7 @@ func (f *dataLatencyTag) save(r *http.Request, h http.Header, b *bytes.Buffer) *
 
 	if _, err := db.Exec(`INSERT INTO data.latency_tag(sitePK, typePK, tagPK)
 			VALUES($1, $2, $3)`,
-		f.dataSite.pk, f.typePK, f.tagPK); err != nil {
+		f.dataSite.pk, f.dataType.pk, f.tagPK); err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
 			// ignore unique constraint errors
 		} else {
@@ -66,7 +68,7 @@ func (f *dataLatencyTag) delete(r *http.Request, h http.Header, b *bytes.Buffer)
 	if _, err := db.Exec(`DELETE FROM data.latency_tag
 			WHERE sitePK = $1
 			AND typePK = $2
-			AND tagPK = $3`, f.dataSite.pk, f.typePK, f.tagPK); err != nil {
+			AND tagPK = $3`, f.dataSite.pk, f.dataType.pk, f.tagPK); err != nil {
 		return weft.InternalServerError(err)
 	}
 

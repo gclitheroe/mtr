@@ -1,12 +1,14 @@
 package main
 
 import (
+
 	"github.com/GeoNet/weft"
-	"net/http"
+	"fmt"
 )
 
 type dataType struct {
-	typePK int
+	id string
+	pk int
 	Scale  float64 // used to scale the stored metric for display
 	Name   string
 	Unit   string // display unit after the metric has been multiplied by scale.
@@ -14,48 +16,52 @@ type dataType struct {
 
 var dataTypes = map[string]dataType{
 	"latency.strong": {
-		typePK: 1,
+		pk: 1,
 		Scale:  1.0,
 		Name:   "latency strong motion data",
 		Unit:   "ms",
 	},
 	"latency.weak": {
-		typePK: 2,
+		pk: 2,
 		Scale:  1.0,
 		Name:   "latency weak motion data",
 		Unit:   "ms",
 	},
 	"latency.gnss.1hz": {
-		typePK: 3,
+		pk: 3,
 		Scale:  1.0,
 		Name:   "latency GNSS 1Hz data",
 		Unit:   "ms",
 	},
 	"latency.tsunami": {
-		typePK: 4,
+		pk: 4,
 		Scale:  1.0,
 		Name:   "latency tsunami data",
 		Unit:   "ms",
 	},
 }
 
-func (d *dataType) load(r *http.Request) *weft.Result {
+func (d *dataType) read() *weft.Result {
+	if d.id == "" {
+		return weft.InternalServerError(fmt.Errorf("empty dataType.id"))
+	}
+
 	var res *weft.Result
 	var t dataType
-	if t, res = loadDataType(r.URL.Query().Get("typeID")); !res.Ok {
+	if t, res = loadDataType(d.id); !res.Ok {
 		return res
 	}
 
 	// TODO - do we need to copy the values like this?  Revisit.
-	d.typePK = t.typePK
+	d.pk = t.pk
 	d.Scale = t.Scale
 	d.Name = t.Name
 	d.Unit = t.Unit
 	return &weft.StatusOK
 }
 
+// TODO combine this into the above func
 func loadDataType(typeID string) (dataType, *weft.Result) {
-
 	if f, ok := dataTypes[typeID]; ok {
 		return f, &weft.StatusOK
 	}

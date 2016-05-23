@@ -39,7 +39,7 @@ func (f *dataLatencyThreshold) save(r *http.Request) *weft.Result {
 	// Ignore errors then update anyway.  TODO Change to upsert 9.5
 	if _, err = db.Exec(`INSERT INTO data.latency_threshold(sitePK, typePK, lower, upper)
 		VALUES ($1,$2,$3,$4)`,
-		dm.dataSite.pk, dm.dataType.typePK, f.lower, f.upper); err != nil {
+		dm.dataSite.pk, dm.dataType.pk, f.lower, f.upper); err != nil {
 		if err, ok := err.(*pq.Error); ok && err.Code == errorUniqueViolation {
 			// ignore unique constraint errors
 		} else {
@@ -52,7 +52,7 @@ func (f *dataLatencyThreshold) save(r *http.Request) *weft.Result {
 		sitePK = $1
 		AND
 		typePK = $2`,
-		dm.dataSite.pk, dm.dataType.typePK, f.lower, f.upper); err != nil {
+		dm.dataSite.pk, dm.dataType.pk, f.lower, f.upper); err != nil {
 		return weft.InternalServerError(err)
 	}
 
@@ -75,7 +75,7 @@ func (f *dataLatencyThreshold) delete(r *http.Request) *weft.Result {
 	if _, err = db.Exec(`DELETE FROM data.latency_threshold
 		WHERE sitePK = $1
 		AND typePK = $2 `,
-		dm.dataSite.pk, dm.dataType.typePK); err != nil {
+		dm.dataSite.pk, dm.dataType.pk); err != nil {
 		return weft.InternalServerError(err)
 	}
 
